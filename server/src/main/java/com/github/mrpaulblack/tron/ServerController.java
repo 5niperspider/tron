@@ -21,6 +21,8 @@ package com.github.mrpaulblack.tron;
 
 import java.net.URI;
 import java.util.HashMap;
+import java.util.UUID;
+
 import org.json.*;
 
 
@@ -28,9 +30,10 @@ import org.json.*;
 public class ServerController {
     private Server server;
     // TODO this is basically the definition of a memory leak since clients do not get deleted; maybe fixable with a timer that deletes clients!?
-    private HashMap<URI, MsgType> clientState = new HashMap<URI, MsgType>();
-    private HashMap<URI, String> clientSession = new HashMap<URI, String>();
-    private HashMap<String, Game> session = new HashMap<String, Game>();
+    private HashMap<URI, UUID> clientID = new HashMap<URI, UUID>();
+    private HashMap<UUID, MsgType> clientState = new HashMap<UUID, MsgType>();
+    private HashMap<UUID, String> clientSession = new HashMap<UUID, String>();
+    private HashMap<String, GameController> session = new HashMap<String, GameController>();
     private String serverName = "tron_server";
     private float serverVersion = 0.1f;
     private int protocolVersion = 1;
@@ -91,6 +94,13 @@ public class ServerController {
 
 
 
+    // TODO impl. braodcast to game clients
+    private void broadcastUpdate(String sessionID) {
+        //broadcast update to specific game
+    }
+
+
+
     // decode payload from a client
     protected void decode(URI client, String payload) {
         try {
@@ -102,8 +112,9 @@ public class ServerController {
                 if (json.getString("type").equals(MsgType.HELLO.toString())) {
                     if (data.has("protocolVersion") && data.has("clientName") && data.has("clientVersion")) {
                         if (data.getInt("protocolVersion") <= protocolVersion && data.getInt("protocolVersion") > 0) {
-                            clientState.put(client, MsgType.HELLO);
-                            LogController.log(Log.DEBUG, "{" + client + "} has send HELLO");
+                            clientID.put(client, UUID.randomUUID());
+                            clientState.put(clientID.get(client), MsgType.HELLO);
+                            LogController.log(Log.DEBUG, "{" + clientID.get(client) + "} has send HELLO");
                             sendWelcome(client);
                         }
                         else {
@@ -118,23 +129,30 @@ public class ServerController {
                 }
 
                 // client register
-                else if (json.getString("type").equals(MsgType.REGISTER.toString()) && clientState.get(client) == MsgType.HELLO) {
+                else if (json.getString("type").equals(MsgType.REGISTER.toString()) && clientState.get(clientID.get(client)) == MsgType.HELLO) {
                     if (data.has("sessionID")) {
                         if (data.getString("sessionID").length() <= 64 && data.getString("sessionID").length() >= 1) {
                             // create new session if it does not exist already
-                            if (session.get(data.getString("sessionID")) == null) {
-                                clientSession.put(client, data.getString("sessionID"));
-                                LogController.log(Log.DEBUG, "{" + client + "} created new session with session ID: " + clientSession.get(client));
+                            if (!session.containsKey(data.getString("sessionID"))) {
+                                session.put(data.getString("sessionID"), null);
+                                clientSession.put(clientID.get(client), data.getString("sessionID"));
+                                LogController.log(Log.DEBUG, "{" + clientID.get(client) + "} created new session with session ID: " + clientSession.get(clientID.get(client)));
                                 sendSessionSettings(client);
+                                clientState.put(clientID.get(client), MsgType.SESSIONDATA);
                             }
-                            // otherwise register in existing session
                             else {
-                                LogController.log(Log.DEBUG, "{" + client + "} has registred to existing session with ID: " + clientSession.get(client));
-                                // TODO impl error handl. when client tries to connect to session that is not set up yet by first client; or when client tries to connect to running game
-                                // TODO impl register in each actual game
-                                // TODO handeling of register in between session create and session status waiting for players
+                                // otherwise register in existing session
+                                if (session.get(data.getString("sessionID")) != null) {
+                                    clientSession.put(clientID.get(client), data.getString("sessionID"));
+                                    LogController.log(Log.DEBUG, "{" + clientID.get(client) + "} has registred to existing session with ID: " + clientSession.get(clientID.get(client)));
+                                    broadcastUpdate(clientSession.get(clientID.get(client)));
+                                    clientState.put(clientID.get(client), MsgType.REGISTER);
+                                }
+                                else {
+                                    sendError(client, MsgError.UNKNOWN, "The session is still getting configured.");
+                                    throw new IllegalArgumentException("session is not configured yet");
+                                }
                             }
-                            clientState.put(client, MsgType.REGISTER);
                         }
                         else {
                             sendError(client, MsgError.UNSUPPORTEDMESSAGETYPE, "Your session ID is to long or to small. The server allows between 1 and 64 char.");
@@ -148,17 +166,20 @@ public class ServerController {
                 }
 
                 // client session settings
-                else if (json.getString("type").equals(MsgType.SESSIONDATA.toString()) && clientState.get(client) == MsgType.REGISTER) {
-                    //start sessiondata by client
+                else if (json.getString("type").equals(MsgType.SESSIONDATA.toString()) && clientState.get(clientID.get(client)) == MsgType.SESSIONDATA) {
+                    // TODO sanitizer start sessiondata by client
+                    GameController tempGame = new Game(protocolVersion, protocolVersion, protocolVersion, protocolVersion);
+                    session.put(clientSession.get(clientID.get(client)), tempGame);
+                    clientState.put(clientID.get(client), MsgType.REGISTER);
                 }
 
                 // client lobby settings
-                else if (json.getString("type").equals(MsgType.LOBBYDATA.toString()) && clientState.get(client) == MsgType.REGISTER) {
+                else if (json.getString("type").equals(MsgType.LOBBYDATA.toString()) && clientState.get(clientID.get(client)) == MsgType.REGISTER) {
                     //start lobbydata by client
                 }
 
                 // client move
-                else if (json.getString("type").equals(MsgType.MOVE.toString()) && clientState.get(client) == MsgType.REGISTER) {
+                else if (json.getString("type").equals(MsgType.MOVE.toString()) && clientState.get(clientID.get(client)) == MsgType.REGISTER) {
                     //start move by client
                 }
 
@@ -166,14 +187,14 @@ public class ServerController {
                 else if (json.getString("type").equals(MsgType.MESSAGE.toString())) {
                     if (data.getBoolean("broadcast")) {
                         // TODO impl. broadcast of message
-                        LogController.log(Log.INFO, "Message from " + client + ": " + json.getString("message"));
+                        LogController.log(Log.INFO, "Message from " + clientID.get(client) + ": " + json.getString("message"));
                     }
-                    else { LogController.log(Log.INFO, "Message from " + client + ": " + json.getString("message")); }
+                    else { LogController.log(Log.INFO, "Message from " + clientID.get(client) + ": " + json.getString("message")); }
                 }
 
                 // client error
                 else if (json.getString("type").equals(MsgType.ERROR.toString())) {
-                    LogController.log(Log.ERROR, "{" + client + "} Error from client: " + data.get("message"));
+                    LogController.log(Log.ERROR, "{" + clientID.get(client) + "} Error from client: " + data.get("message"));
                     throw new IllegalArgumentException("Error message from client recieved");
                 }
 
@@ -187,7 +208,7 @@ public class ServerController {
                 throw new IllegalArgumentException("Type key is missing from request");
             }
         } catch (Exception e) {
-            LogController.log(Log.ERROR, "{" + client + "} " + e.toString());
+            LogController.log(Log.ERROR, "{" + clientID.get(client) + "} " + e.toString());
             //TODO remove client from session if exception
         }
     }
