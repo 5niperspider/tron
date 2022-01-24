@@ -8,11 +8,14 @@
  * {"type":"hello","data":{"protocolVersion":-1,"clientName":"tron_cli_client","clientVersion":0.1}}
  * {"type":"hello","data":{"protocolVersion":1,"clientName":"tron_cli_client","clientVersion":0.1}}
  * 
- * ### client hello
+ * ### client register
  * {"type":"register","data":{"protocolVersion":1}}
  * {"type":"register","data":{"sessionID":""}}
  * {"type":"register","data":{"sessionID":"test"}}
  *
+* ### client sessionData
+ * {"type":"sessionData","data":{"settings":[{"key":"board_size","valueInt":10}]}}
+ * 
  * ### type errors
  * {"type":"test","data":{"test":1}}
  * {"data":{"protocolVersion":1}}
@@ -177,10 +180,33 @@ public class ServerController {
                 // client session settings
                 else if (json.getString("type").equals(MsgType.SESSIONDATA.toString()) && clientState.get(client) == MsgType.SESSIONDATA) {
                     // TODO sanitizer start sessiondata by client
-                    GameController tempGame = new Game(protocolVersion, protocolVersion, protocolVersion, protocolVersion);
-                    session.replace(clientSession.get(client), tempGame);
-                    clientState.put(client, MsgType.REGISTER);
-                    broadcastUpdate(clientSession.get(client));
+                    if (data.has("settings")) {
+                        Boolean ok = true;
+                        for (int i = 0; i < data.getJSONArray("settings").length(); i++) {
+                            JSONObject tempSettings = new JSONObject(data.getJSONArray("settings").get(i).toString());
+                            if (!tempSettings.has("key") && !(tempSettings.has("valueInt") || tempSettings.has("valueBool") || tempSettings.has("valueFloat") || tempSettings.has("valueString"))) {
+                                ok = false;
+                                break;
+                            }
+                        }
+                        // create GameController if all keys are present
+                        if (ok) {
+                            // TODO change game contructor to support dyn settings
+                            GameController tempGame = new Game(null, null, null, null);
+                            session.replace(clientSession.get(client), tempGame);
+                            clientState.put(client, MsgType.REGISTER);
+                            LogController.log(Log.DEBUG, "{" + clientID.get(client) + "} has send SESSIONDATA");
+                            broadcastUpdate(clientSession.get(client));
+                        }
+                        else {
+                            sendError(client, MsgError.UNSUPPORTEDMESSAGETYPE, "Your payload is missing at least one of the required keys in at least one index of the settings array: key, (valueInt or valueString or valueFloat or valueBool).");
+                            throw new IllegalArgumentException("settings payload is missing at least one key: key, (valueInt or valueString or valueFloat or valueBool)");
+                        }
+                    }
+                    else {
+                        sendError(client, MsgError.UNSUPPORTEDMESSAGETYPE, "Your payload is missing the required key: settings.");
+                        throw new IllegalArgumentException("payload is missing the required key: settings");
+                    }
                 }
 
                 // client lobby settings
@@ -193,6 +219,8 @@ public class ServerController {
                                     if (PlayerColor.toPlayerColor(data.getString("color")) != null && PlayerColor.toPlayerColor(data.getString("color")) != PlayerColor.UNDEFINED) {
                                         // TODO call game with color -> game needs to return if successfull or not as boolean and also if game starts to timer can run for update move cicle
                                         session.get(clientSession.get(client)).ready(clientID.get(client), PlayerColor.toPlayerColor(data.getString("color")), data.getString("name"));
+                                        LogController.log(Log.DEBUG, "{" + clientID.get(client) + "} has send REGISTER");
+                                        broadcastUpdate(clientSession.get(client));
                                     }
                                     else {
                                         sendError(client, MsgError.UNSUPPORTEDMESSAGETYPE, "Your defined player color does not exist on the server as an option.");
@@ -212,6 +240,8 @@ public class ServerController {
                         // player state unready
                         else {
                             session.get(clientSession.get(client)).unready(clientID.get(client));
+                            LogController.log(Log.DEBUG, "{" + clientID.get(client) + "} has send UNREGISTER");
+                            broadcastUpdate(clientSession.get(client));
                         }
                     }
                     else {
@@ -256,9 +286,13 @@ public class ServerController {
         // remove client from session if exception
         } catch (Exception e) {
             LogController.log(Log.ERROR, "{" + clientID.get(client) + "} " + e.toString());
+            // TODO remove keys from hashmap as well as their values
             clientID.remove(client);
             clientState.remove(client);
             clientSession.remove(client);
+            if (session.get(clientSession.get(client)) == null) {
+                session.remove(clientSession.get(client));
+            }
         }
     }
 }

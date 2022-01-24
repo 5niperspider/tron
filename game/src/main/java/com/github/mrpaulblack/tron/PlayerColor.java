@@ -33,8 +33,8 @@ public enum PlayerColor {
 			case "blue": return BLUE;
 			case "green": return GREEN;
 			case "yellow": return YELLOW;
-        	case "purple": return PURPLE;
-        	case "cyan": return CYAN;
+			case "purple": return PURPLE;
+       		case "cyan": return CYAN;
 			case "undefined": return UNDEFINED;
 			default: return null;
 		}
