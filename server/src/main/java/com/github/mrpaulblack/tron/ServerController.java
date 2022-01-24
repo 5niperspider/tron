@@ -177,9 +177,8 @@ public class ServerController {
                     }
                 }
 
-                // client session settings
+                // client session data
                 else if (json.getString("type").equals(MsgType.SESSIONDATA.toString()) && clientState.get(client) == MsgType.SESSIONDATA) {
-                    // TODO sanitizer start sessiondata by client
                     if (data.has("settings")) {
                         Boolean ok = true;
                         for (int i = 0; i < data.getJSONArray("settings").length(); i++) {
@@ -287,12 +286,12 @@ public class ServerController {
         } catch (Exception e) {
             LogController.log(Log.ERROR, "{" + clientID.get(client) + "} " + e.toString());
             // TODO remove keys from hashmap as well as their values
-            clientID.remove(client);
-            clientState.remove(client);
-            clientSession.remove(client);
             if (session.get(clientSession.get(client)) == null) {
                 session.remove(clientSession.get(client));
             }
+            clientID.remove(client);
+            clientState.remove(client);
+            clientSession.remove(client);
         }
     }
 }
