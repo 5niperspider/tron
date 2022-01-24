@@ -27,6 +27,19 @@ public enum PlayerColor {
 		return this.index;
 	}
 
+	public static PlayerColor toPlayerColor(String color) {
+		switch(color) {
+			case "red": return RED;
+			case "blue": return BLUE;
+			case "green": return GREEN;
+			case "yellow": return YELLOW;
+        	case "purple": return PURPLE;
+        	case "cyan": return CYAN;
+			case "undefined": return UNDEFINED;
+			default: return null;
+		}
+	}
+
 	/**
 	 * <h1><i>toString</i></h1>
 	 * <p>Method converting Enums to string and return it supporting TRON spezifications.</p>

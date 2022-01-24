@@ -51,6 +51,7 @@ public class Server {
 			server.recieve();
 		} catch (Exception e) {
 			LogController.log(Log.ERROR, e.toString());
+			System.exit(1);
 		}
 	}
 
