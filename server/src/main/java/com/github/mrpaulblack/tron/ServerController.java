@@ -34,6 +34,7 @@ import org.json.*;
 public class ServerController {
     private Server server;
     // TODO this is basically the definition of a memory leak since clients do not get deleted; maybe fixable with a timer that deletes clients in case of timeout!?
+    // TODO single timer tha queries client last seen timestampts (saved to naother hashmap) -> like cron
     private HashMap<URI, UUID> clientID = new HashMap<URI, UUID>();
     private HashMap<URI, MsgType> clientState = new HashMap<URI, MsgType>();
     private HashMap<URI, String> clientSession = new HashMap<URI, String>();
@@ -208,7 +209,7 @@ public class ServerController {
                     }
                 }
 
-                // client lobby settings
+                // client lobby data
                 else if (json.getString("type").equals(MsgType.LOBBYDATA.toString()) && clientState.get(client) == MsgType.REGISTER) {
                     if (data.has("ready")) {
                         // player state ready
